@@ -3,13 +3,25 @@
 
     import {onMount} from "svelte";
 
-    let innerWidth = $state(0);
-    let innerHeight = $state(0);
-
     let canvas: HTMLCanvasElement;
 
     const fontSize = 12.8;
     const lineHeight = fontSize * 1.4;
+    const maxCells = 12000;
+    const colorLevels = 128;
+
+    let time = 0.0;
+
+    const chars: string = "@B%8&WM#*oahkbdpqwmzcvunxrjft/|()1{}[]?-_+~<>i!;:,^`'. ";
+
+
+    const colorPalette = Array.from({ length: colorLevels + 1 }, (_, index) => {
+        const shade = index / colorLevels;
+        const r = shade * shade * 0.33;
+        const g = shade * 0.33;
+        const b = Math.sqrt(shade) * 0.33;
+        return `rgb(${r * 100}% ${g * 100}% ${b * 100}%)`;
+    });
 
     function shademap(x: number): number {
         if (x < 0.0) {
@@ -25,77 +37,74 @@
         }
     }
 
-    type Vec2 = readonly [number, number];
-
-    const add = (a: Vec2, b: Vec2): Vec2 => [a[0] + b[0], a[1] + b[1]];
     const fract = (x: number): number => x - Math.floor(x);
-    const dot = (a: Vec2, b: Vec2): number => a[0] * b[0] + a[1] * b[1];
 
-    const transformAndScale = (p: Vec2, scale: number): Vec2 => [
-        (0.8 * p[0] - 0.6 * p[1]) * scale,
-        (0.6 * p[0] + 0.8 * p[1]) * scale,
-    ];
-
-    function rand(n: Vec2): number {
-        return fract(Math.sin(dot(n, [12.9898, 4.1414])) * 43758.5453);
+    function rand(x: number, y: number): number {
+        return fract(Math.sin(x * 12.9898 + y * 4.1414) * 43758.5453);
     }
 
-    function noise(p: Vec2): number {
-        const ip: Vec2 = [Math.floor(p[0]), Math.floor(p[1])];
-        let u: Vec2 = [fract(p[0]), fract(p[1])];
+    function noise(x: number, y: number): number {
+        const ix = Math.floor(x);
+        const iy = Math.floor(y);
+        let u = fract(x);
+        let v = fract(y);
 
-        u = [
-            u[0] * u[0] * (3 - 2 * u[0]),
-            u[1] * u[1] * (3 - 2 * u[1]),
-        ];
+        u = u * u * (3 - 2 * u);
+        v = v * v * (3 - 2 * v);
 
-        const a = rand(ip);
-        const b = rand([ip[0] + 1, ip[1]]);
-        const c = rand([ip[0], ip[1] + 1]);
-        const d = rand([ip[0] + 1, ip[1] + 1]);
+        const a = rand(ix, iy);
+        const b = rand(ix + 1, iy);
+        const c = rand(ix, iy + 1);
+        const d = rand(ix + 1, iy + 1);
 
-        const lower = a * (1 - u[0]) + b * u[0];
-        const upper = c * (1 - u[0]) + d * u[0];
-        const result = lower * (1 - u[1]) + upper * u[1];
+        const lower = a * (1 - u) + b * u;
+        const upper = c * (1 - u) + d * u;
+        const result = lower * (1 - v) + upper * v;
 
         return result * result;
     }
 
-    function fbm(p: Vec2, iTime: number): number {
+    function fbm(x: number, y: number, iTime: number): number {
         let f = 0;
+        let px = x;
+        let py = y;
+        const timeOffset = Math.sin(iTime);
 
-        f += 0.5 * noise([p[0] + iTime, p[1] + iTime]);
-        p = transformAndScale(p, 2.02);
+        f += 0.5 * noise(px + iTime, py + iTime);
+        let nextX = (0.8 * px - 0.6 * py) * 2.02;
+        py = (0.6 * px + 0.8 * py) * 2.02;
+        px = nextX;
 
-        f += 0.03125 * noise(p);
-        p = transformAndScale(p, 2.01);
+        f += 0.03125 * noise(px, py);
+        nextX = (0.8 * px - 0.6 * py) * 2.01;
+        py = (0.6 * px + 0.8 * py) * 2.01;
+        px = nextX;
 
-        f += 0.25 * noise(p);
-        p = transformAndScale(p, 2.03);
+        f += 0.25 * noise(px, py);
+        nextX = (0.8 * px - 0.6 * py) * 2.03;
+        py = (0.6 * px + 0.8 * py) * 2.03;
+        px = nextX;
 
-        f += 0.125 * noise(p);
-        p = transformAndScale(p, 2.01);
+        f += 0.125 * noise(px, py);
+        nextX = (0.8 * px - 0.6 * py) * 2.01;
+        py = (0.6 * px + 0.8 * py) * 2.01;
+        px = nextX;
 
-        f += 0.0625 * noise(p);
-        p = transformAndScale(p, 2.04);
+        f += 0.0625 * noise(px, py);
+        nextX = (0.8 * px - 0.6 * py) * 2.04;
+        py = (0.6 * px + 0.8 * py) * 2.04;
+        px = nextX;
 
-        f += 0.015625 * noise([
-            p[0] + Math.sin(iTime),
-            p[1] + Math.sin(iTime),
-        ]);
+        f += 0.015625 * noise(px + timeOffset, py + timeOffset);
 
         return f / 0.96875;
     }
 
-    function pattern(p: Vec2, iTime: number): number {
-        const base = fbm(p, iTime);
-        const warped = fbm(add(p, [base, base]), iTime);
-        return fbm(add(p, [warped, warped]), iTime);
+    function pattern(x: number, y: number, iTime: number): number {
+        const base = fbm(x, y, iTime);
+        const warped = fbm(x + base, y + base, iTime);
+        return fbm(x + warped, y + warped, iTime);
     }
-
-    let time = 0.0;
-
-    const chars: string = "@B%8&WM#*oahkbdpqwmzcvunxrjft/|()1{}[]?-_+~<>i!;:,^`'. ";
 
     function mapChar(x: number): string {
         if (x <= 0.0) {
@@ -124,36 +133,45 @@
 
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
-        ctx.textBaseline = "top";
+        ctx.textBaseline = "middle";
         ctx.textAlign = "center";
 
         const charWidth = ctx.measureText("@").width;
-        const columns = Math.floor(width / charWidth);
-        const rows = Math.floor(width / charWidth);
-        if (!columns || !rows) return;
+        const baseColumns = Math.floor(width / charWidth);
+        const baseRows = Math.floor(height / lineHeight);
+        if (!baseColumns || !baseRows) return;
+
+        const cellScale = Math.min(1, Math.sqrt(maxCells / (baseColumns * baseRows)));
+        const columns = Math.max(1, Math.floor(baseColumns * cellScale));
+        const rows = Math.max(1, Math.floor(baseRows * cellScale));
+        const cellWidth = width / columns;
+        const cellHeight = height / rows;
+        const frameFontSize = fontSize / cellScale;
+        ctx.font = `${frameFontSize}px "JetBrains Mono", monospace`;
 
         ctx.fillStyle = "#0A0A0A";
         ctx.fillRect(0, 0, width, height);
 
-        const cellWidth = width / columns;
         const aspect = columns / rows;
+        let currentColor = "";
 
         for (let i = 0; i < rows; i++) {
             for (let j = 0; j < columns; j++) {
-                let u = 2.0 * j / columns;
-                let v = 4.0 * aspect * i / rows;
+                let u = 0.5 * aspect * j / columns;
+                let v = i / rows;
 
-                let shade = pattern([u, v], time);
+                let shade = pattern(u, v, time);
                 let shadeScaled = Math.min(1.0, shade * 1.5);
                 let cb = shademap(shade);
 
-                let r = shadeScaled * shadeScaled * 0.33;
-                let g = shadeScaled * 0.33;
-                let b = Math.sqrt(shadeScaled) * 0.33;
-                let char = mapChar(Math.sqrt(cb));
+                const colorIndex = Math.round(shadeScaled * colorLevels);
+                const color = colorPalette[colorIndex];
+                if (color !== currentColor) {
+                    ctx.fillStyle = color;
+                    currentColor = color;
+                }
 
-                ctx.fillStyle = `rgb(${r * 100}% ${g * 100}% ${b * 100}%)`;
-                ctx.fillText(char, (j + 0.5) * cellWidth, i * lineHeight);
+                ctx.fillText(mapChar(Math.sqrt(cb)), (j + 0.5) * cellWidth, (i + 0.5) * cellHeight);
             }
         }
 
@@ -162,10 +180,13 @@
 
     onMount(() => {
         renderGrid();
+        void document.fonts.ready.then(renderGrid);
 
         addEventListener("resize", renderGrid);
 
-        let id = setInterval(renderGrid, 100);
+        let id = setInterval(() => {
+            if (!document.hidden) renderGrid();
+        }, 100);
 
         return () => {
             clearInterval(id);
@@ -174,9 +195,7 @@
     });
 </script>
 
-<svelte:window bind:innerWidth={innerWidth} bind:innerHeight={innerHeight} />
-
-<canvas bind:this={canvas} class="fullscreen-grid"></canvas>
+<canvas bind:this={canvas} class="fullscreen-grid" aria-hidden="true"></canvas>
 
 <style>
     :global(html, body) {
@@ -197,25 +216,6 @@
         left: 0;
         width: 100vw;
         height: 100vh;
-        display: flex;
-        flex-direction: column;
-    }
-
-    .grid-row {
-        display: flex;
-        flex-direction: row;
-        white-space: nowrap;
-    }
-
-    .grid-item {
-        font-size: 0.8rem;
-        line-height: 1.4;
-        display: inline-block;
-    }
-
-    .measure-box {
-        position: absolute;
-        visibility: hidden;
-        pointer-events: none;
+        display: block;
     }
 </style>
