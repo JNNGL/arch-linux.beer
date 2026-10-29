@@ -2,6 +2,7 @@
     import "@fontsource/jetbrains-mono";
 
     import {onMount} from "svelte";
+    import {expoOut} from "svelte/easing";
 
     let canvas: HTMLCanvasElement;
 
@@ -14,7 +15,6 @@
 
     const chars: string = "@B%8&WM#*oahkbdpqwmzcvunxrjft/|()1{}[]?-_+~<>i!;:,^`'. ";
 
-
     const colorPalette = Array.from({ length: colorLevels + 1 }, (_, index) => {
         const shade = index / colorLevels;
         const r = shade * shade * 0.33;
@@ -23,18 +23,8 @@
         return `rgb(${r * 100}% ${g * 100}% ${b * 100}%)`;
     });
 
-    function shademap(x: number): number {
-        if (x < 0.0) {
-            return 54.0 / 255.0;
-        } else if (x < 7249.0 / 82979.0) {
-            return (829.79 * x + 54.51) / 255.0;
-        } else if (x < 20049.0 / 82979.0) {
-            return 127.0 / 255.0;
-        } else if (x < 327013.0 / 810990.0) {
-            return (792.022493413 * x - 64.3647907356) / 255.0;
-        } else {
-            return 1.0;
-        }
+    function backgroundOpacity(time: number): number {
+        return time >= 1.0 ? 1.0 : expoOut(time);
     }
 
     const fract = (x: number): number => x - Math.floor(x);
@@ -131,6 +121,8 @@
             canvas.height = Math.round(height * dpr);
         }
 
+        const opacity = backgroundOpacity(time);
+
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
         ctx.textBaseline = "middle";
@@ -149,7 +141,7 @@
         const frameFontSize = fontSize / cellScale;
         ctx.font = `${frameFontSize}px "JetBrains Mono", monospace`;
 
-        ctx.fillStyle = "#0A0A0A";
+        ctx.fillStyle = `rgb(${opacity * 4}% ${opacity * 4}% ${opacity * 4}%)`;
         ctx.fillRect(0, 0, width, height);
 
         const aspect = columns / rows;
@@ -157,12 +149,13 @@
 
         for (let i = 0; i < rows; i++) {
             for (let j = 0; j < columns; j++) {
-                let u = 0.5 * aspect * j / columns;
+                let u = 0.25 * aspect * j / columns;
                 let v = i / rows;
 
                 let shade = pattern(u, v, time);
                 let shadeScaled = Math.min(1.0, shade * 1.5);
-                let cb = shademap(shade);
+
+                shadeScaled *= opacity;
 
                 const colorIndex = Math.round(shadeScaled * colorLevels);
                 const color = colorPalette[colorIndex];
@@ -171,31 +164,36 @@
                     currentColor = color;
                 }
 
-                ctx.fillText(mapChar(Math.sqrt(cb)), (j + 0.5) * cellWidth, (i + 0.5) * cellHeight);
+                ctx.fillText(mapChar(shade + 0.5), (j + 0.5) * cellWidth, (i + 0.5) * cellHeight);
             }
         }
 
-        time += 0.01;
+        time += 0.0015;
     }
 
     onMount(() => {
         renderGrid();
-        void document.fonts.ready.then(renderGrid);
 
-        addEventListener("resize", renderGrid);
+        let id: null | NodeJS.Timeout = null;
 
-        let id = setInterval(() => {
-            if (!document.hidden) renderGrid();
-        }, 100);
+        void document.fonts.ready.then(() => {
+            addEventListener("resize", renderGrid);
+
+            id = setInterval(() => {
+                if (!document.hidden) renderGrid();
+            }, 50);
+        });
 
         return () => {
-            clearInterval(id);
+            if (id !== null) {
+                clearInterval(id);
+            }
             removeEventListener("resize", renderGrid);
         }
     });
 </script>
 
-<canvas bind:this={canvas} class="fullscreen-grid" aria-hidden="true"></canvas>
+<canvas bind:this={canvas} class="fullscreen-grid z-0" aria-hidden="true"></canvas>
 
 <style>
     :global(html, body) {
