@@ -6,21 +6,10 @@
     let innerWidth = $state(0);
     let innerHeight = $state(0);
 
-    let rows = $state(0);
-    let columns = $state(0);
+    let canvas: HTMLCanvasElement;
 
-    type SymbolData = {
-        color: {
-            r: number;
-            g: number;
-            b: number;
-        };
-        content: string;
-    }
-
-    let data: Array<Array<SymbolData>> = $state([]);
-
-    let measurer: HTMLSpanElement;
+    const fontSize = 12.8;
+    const lineHeight = fontSize * 1.4;
 
     function shademap(x: number): number {
         if (x < 0.0) {
@@ -120,34 +109,51 @@
     }
 
     function renderGrid() {
-        if (!measurer || innerWidth === 0 || innerHeight === 0) return;
+        const ctx = canvas?.getContext("2d");
+        if (!ctx) return;
 
-        const rect = measurer.getBoundingClientRect();
-        const charWidth = rect.width;
-        const charHeight = rect.height;
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+        const dpr = window.devicePixelRatio || 1;
 
-        columns = Math.floor(innerWidth / charWidth);
-        rows = Math.floor(innerHeight / charHeight);
+        if (canvas.width !== Math.round(width * dpr) ||
+            canvas.height !== Math.round(height * dpr)) {
+            canvas.width = Math.round(width * dpr);
+            canvas.height = Math.round(height * dpr);
+        }
 
-        data = Array.from({length: rows});
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.font = `${fontSize}px "JetBrains Mono", monospace`;
+        ctx.textBaseline = "top";
+        ctx.textAlign = "center";
+
+        const charWidth = ctx.measureText("@").width;
+        const columns = Math.floor(width / charWidth);
+        const rows = Math.floor(width / charWidth);
+        if (!columns || !rows) return;
+
+        ctx.fillStyle = "#0A0A0A";
+        ctx.fillRect(0, 0, width, height);
+
+        const cellWidth = width / columns;
+        const aspect = columns / rows;
+
         for (let i = 0; i < rows; i++) {
-            data[i] = Array.from({length: columns});
             for (let j = 0; j < columns; j++) {
-                let u = j / columns;
-                let v = i / rows;
+                let u = 2.0 * j / columns;
+                let v = 4.0 * aspect * i / rows;
 
                 let shade = pattern([u, v], time);
                 let shadeScaled = Math.min(1.0, shade * 1.5);
                 let cb = shademap(shade);
 
-                data[i][j] = {
-                    color: {
-                        r: shadeScaled * shadeScaled * 0.33,
-                        g: shadeScaled * 0.33,
-                        b: Math.pow(shadeScaled, 1.0 / 2.0) * 0.33
-                    },
-                    content: mapChar(Math.sqrt(cb))
-                };
+                let r = shadeScaled * shadeScaled * 0.33;
+                let g = shadeScaled * 0.33;
+                let b = Math.sqrt(shadeScaled) * 0.33;
+                let char = mapChar(Math.sqrt(cb));
+
+                ctx.fillStyle = `rgb(${r * 100}% ${g * 100}% ${b * 100}%)`;
+                ctx.fillText(char, (j + 0.5) * cellWidth, i * lineHeight);
             }
         }
 
@@ -170,20 +176,7 @@
 
 <svelte:window bind:innerWidth={innerWidth} bind:innerHeight={innerHeight} />
 
-<span class="grid-item measure-box" bind:this={measurer}>&nbsp;</span>
-
-<div class="fullscreen-grid justify-center bg-neutral-950">
-    {#each { length: rows }, r}
-        <div class="grid-row justify-between">
-            {#each { length: columns }, c}
-                <span style:color="rgb({data[r][c].color.r * 100}%
-                                       {data[r][c].color.g * 100}%
-                                       {data[r][c].color.b * 100}%)"
-                      class="grid-item">{data[r][c].content}</span>
-            {/each}
-        </div>
-    {/each}
-</div>
+<canvas bind:this={canvas} class="fullscreen-grid"></canvas>
 
 <style>
     :global(html, body) {
