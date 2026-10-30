@@ -232,8 +232,17 @@
         const visualViewport = window.visualViewport;
 
         import("svelte-system-info").then((System) => {
-            operatingSystem = System.OSName + " " + System.OSVersion;
-            host = System.BrowserName + " " + System.BrowserVersion;
+            type SvSystem = {
+                readonly OSName: string;
+                readonly OSVersion: string;
+                readonly BrowserName: string;
+                readonly BrowserVersion: string;
+            };
+
+            const info = System as unknown as SvSystem;
+
+            operatingSystem = info.OSName + " " + info.OSVersion;
+            host = info.BrowserName + " " + info.BrowserVersion;
         })
 
         const scheduleRender = () => {
