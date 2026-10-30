@@ -488,7 +488,7 @@
     }
 
     .aligned-content p:not(.terminal-cursor),
-    .aligned-content h1,
+    /*.aligned-content h1,*/
     .aligned-content span,
     .aligned-content div {
         min-height: var(--grid-cell-height);
