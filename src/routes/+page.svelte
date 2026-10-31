@@ -4,6 +4,8 @@
     import {onMount} from "svelte";
     import {expoOut} from "svelte/easing";
 
+    import {processCommand} from "#lib/command.ts";
+
     let canvas: HTMLCanvasElement;
     let overlay: HTMLElement;
 
@@ -280,9 +282,6 @@
                     targetPowR = 0.4;
                     targetPowG = 1.5;
                     targetPowB = 2.0;
-                    // targetPowR = 1.0;
-                    // targetPowG = 0.5;
-                    // targetPowB = 1.0;
                 }
 
                 scheduleRender();
@@ -322,7 +321,9 @@
 
     function onKeyDown(event: KeyboardEvent) {
         const control = event.ctrlKey;
-        if (!event.altKey && !event.ctrlKey && !event.metaKey && event.key.length == 1) {
+        const alt = event.altKey;
+        const regular = !event.altKey && !event.ctrlKey && !event.metaKey;
+        if (regular && event.key.length == 1) {
             holdCursorSolid();
             commandLine = commandLine.substring(0, cursorX - promptLine.length) + event.key + commandLine.substring(cursorX - promptLine.length);
             terminalData[terminalData.length - 1] = promptLine + commandLine;
@@ -334,20 +335,34 @@
                 terminalData[terminalData.length - 1] = promptLine + commandLine;
                 cursorX--;
             }
-        } else if (event.key === "ArrowLeft") {
+        } else if ((regular || alt) && event.key === "ArrowLeft") {
             holdCursorSolid();
             if (cursorX > promptLine.length) {
-                cursorX--;
+                if (event.altKey) {
+                    cursorX = promptLine.length;
+                } else {
+                    cursorX--;
+                }
             }
-        } else if (event.key === "ArrowRight") {
+        } else if ((regular || alt) && event.key === "ArrowRight") {
             holdCursorSolid();
             if (cursorX < promptLine.length + commandLine.length) {
-                cursorX++;
+                if (event.altKey) {
+                    cursorX = promptLine.length + commandLine.length;
+                } else {
+                    cursorX++;
+                }
             }
         } else if (control && event.key === "c") {
             commandLine = "";
             terminalData[terminalData.length - 1] += "^C";
             terminalData.push(promptLine);
+            cursorX = promptLine.length;
+        } else if (event.key === "Enter") {
+            processCommand(commandLine, terminalData);
+            commandLine = "";
+            terminalData.push(promptLine);
+            cursorX = promptLine.length;
         }
     }
 </script>
