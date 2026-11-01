@@ -5,6 +5,7 @@
     import {expoOut} from "svelte/easing";
 
     import {processCommand} from "#lib/command.ts";
+    import {getDisplayCWD, loadStaticWebFiles} from "#lib/filesystem.ts";
 
     let canvas: HTMLCanvasElement;
     let overlay: HTMLElement;
@@ -33,7 +34,11 @@
 
     let colorPalette: Array<string> = [];
 
-    let promptLine = "root@localhost:~# ";
+    function getPromptLine(): string {
+        return "root@localhost:" + getDisplayCWD() + "# ";
+    }
+
+    let promptLine = getPromptLine();
     let commandLine = "";
     let terminalData: Array<string> = $state([promptLine]);
     let cursorX = $state(promptLine.length);
@@ -130,6 +135,13 @@
             let index = (1.0 - x) * (chars.length - 1);
             return chars[Math.round(index)];
         }
+    }
+
+    function setErrorBackground() {
+        deltaTime = 0.04;
+        targetPowR = 0.5;
+        targetPowG = 2.0;
+        targetPowB = 2.5;
     }
 
     function renderGrid() {
@@ -229,6 +241,8 @@
     onMount(() => {
         generatePalette();
 
+        loadStaticWebFiles();
+
         let active = true;
         let frameId = 0;
         const visualViewport = window.visualViewport;
@@ -277,13 +291,6 @@
                 targetPowG = lerp(targetPowG, 1.0, 0.006);
                 targetPowB = lerp(targetPowB, 0.5, 0.006);
 
-                if (frame == 400) {
-                    deltaTime = 0.04;
-                    targetPowR = 0.4;
-                    targetPowG = 1.5;
-                    targetPowB = 2.0;
-                }
-
                 scheduleRender();
             }
         }, 50);
@@ -318,6 +325,14 @@
             cursorSolid = false;
         }, 450);
     }
+
+    const terminalOutputPipe = (data: string) => {
+        const parts = data.split("\n");
+        terminalData[terminalData.length - 1] += parts[0];
+        for (let i = 1; i < parts.length; i++) {
+            terminalData.push(parts[i]);
+        }
+    };
 
     function onKeyDown(event: KeyboardEvent) {
         const control = event.ctrlKey;
@@ -359,8 +374,18 @@
             terminalData.push(promptLine);
             cursorX = promptLine.length;
         } else if (event.key === "Enter") {
-            processCommand(commandLine, terminalData);
+            terminalData.push("");
+            if (commandLine.trim().length > 0) {
+                const code = processCommand(commandLine, terminalOutputPipe);
+                if (code < 0) {
+                    setErrorBackground();
+                }
+            }
+            promptLine = getPromptLine();
             commandLine = "";
+            if (terminalData[terminalData.length - 1] == "") {
+                terminalData.pop();
+            }
             terminalData.push(promptLine);
             cursorX = promptLine.length;
         }
