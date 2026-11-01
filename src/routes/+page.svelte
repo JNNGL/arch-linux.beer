@@ -5,6 +5,8 @@
     import {expoOut} from "svelte/easing";
 
     import {processCommand} from "#lib/command.ts";
+    import type {OutputPipe} from "#lib/pipe.ts";
+    import {wrapTerminalItems} from "#lib/terminal.ts";
     import {
         getCommandCompletions,
         getDisplayCWD,
@@ -498,7 +500,7 @@
         }, 450);
     }
 
-    const terminalOutputPipe = (data: string) => {
+    const terminalOutputPipe: OutputPipe = (data: string) => {
         const parts = data.split("\n");
         terminalData[terminalData.length - 1] += parts[0];
         for (let i = 1; i < parts.length; i++) {
@@ -509,6 +511,12 @@
             resetTerminalWheelMotion();
         }
     };
+    terminalOutputPipe.clearTerminal = () => {
+        terminalData = [];
+        terminalFirstRow = 0;
+        terminalFollowsOutput = true;
+    };
+    terminalOutputPipe.getTerminalColumns = () => terminalColumns;
 
     function resetTerminalWheelMotion() {
         terminalWheelRemainder = 0;
@@ -654,24 +662,6 @@
         return value.replace(/[\\ "]/g, "\\$&");
     }
 
-    function wrapCompletionLabels(labels: string[], columns: number): string[] {
-        const rows: string[] = [];
-        let row = "";
-
-        for (const label of labels) {
-            const next = row ? `${row}  ${label}` : label;
-            if (row && next.length > columns) {
-                rows.push(row);
-                row = label;
-            } else {
-                row = next;
-            }
-        }
-
-        if (row) rows.push(row);
-        return rows;
-    }
-
     function completeTerminalToken() {
         const commandCursor = cursorX - promptLine.length;
         const context = getCompletionContext(commandLine, commandCursor);
@@ -699,7 +689,7 @@
         if (candidates.length > 1 && commonPrefix === prefix) {
             const currentLine = promptLine + commandLine;
             terminalData[terminalData.length - 1] = currentLine;
-            terminalData.push(...wrapCompletionLabels(candidates.map((candidate) => candidate.label), terminalColumns));
+            terminalData.push(...wrapTerminalItems(candidates.map((candidate) => candidate.label), terminalColumns));
             terminalData.push(currentLine);
             cursorX = promptLine.length + commandCursor;
             holdCursorSolid();

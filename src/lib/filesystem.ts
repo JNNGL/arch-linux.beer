@@ -1,4 +1,8 @@
 import { type Directory, dummyFile, type VirtualFile } from '#lib/file.ts';
+import { catCommandFile } from '#lib/commands/cat.ts';
+import { clearCommandFile } from '#lib/commands/clear.ts';
+import { echoCommandFile } from '#lib/commands/echo.ts';
+import { lsCommandFile } from '#lib/commands/ls.ts';
 import { helloCommandFile } from '#lib/commands/hello.ts';
 import { cdCommandFile } from '#lib/commands/cd.ts';
 import { openCommandFile } from '#lib/commands/open.ts';
@@ -11,8 +15,12 @@ export const fsRoot: Directory = {
 			name: 'bin',
 			children: [],
 			files: [
-				helloCommandFile,
+				catCommandFile,
 				cdCommandFile,
+				clearCommandFile,
+				echoCommandFile,
+				helloCommandFile,
+				lsCommandFile,
 				openCommandFile,
 			]
 		},
