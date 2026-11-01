@@ -1,11 +1,16 @@
 import { type Directory, dummyFile, type VirtualFile } from '#lib/file.ts';
 import { catCommandFile } from '#lib/commands/cat.ts';
 import { clearCommandFile } from '#lib/commands/clear.ts';
+import { dateCommandFile } from '#lib/commands/date.ts';
 import { echoCommandFile } from '#lib/commands/echo.ts';
 import { lsCommandFile } from '#lib/commands/ls.ts';
 import { helloCommandFile } from '#lib/commands/hello.ts';
 import { cdCommandFile } from '#lib/commands/cd.ts';
 import { openCommandFile } from '#lib/commands/open.ts';
+import { pacmanCommandFile } from '#lib/commands/pacman.ts';
+import { pwdCommandFile } from '#lib/commands/pwd.ts';
+import { unameCommandFile } from '#lib/commands/uname.ts';
+import { whoamiCommandFile } from '#lib/commands/whoami.ts';
 import staticFiles from '#lib/static_web.json'
 
 export const fsRoot: Directory = {
@@ -18,10 +23,15 @@ export const fsRoot: Directory = {
 				catCommandFile,
 				cdCommandFile,
 				clearCommandFile,
+				dateCommandFile,
 				echoCommandFile,
 				helloCommandFile,
 				lsCommandFile,
 				openCommandFile,
+				pacmanCommandFile,
+				pwdCommandFile,
+				unameCommandFile,
+				whoamiCommandFile,
 			]
 		},
 		{
