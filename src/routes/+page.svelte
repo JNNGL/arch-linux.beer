@@ -12,6 +12,7 @@
     let alignedContent: HTMLDivElement;
     let zfetchPanel: HTMLDivElement;
     let terminalPanel: HTMLDivElement;
+    let terminalElement: HTMLDivElement;
 
     let viewportWidth = $state(0);
     let viewportHeight = $state(0);
@@ -53,22 +54,49 @@
     let terminalData: Array<string> = $state([promptLine]);
     let cursorX = $state(promptLine.length);
     let terminalRows = $state(12);
+    let terminalColumns = $state(80);
     const terminalWheelCooldown = 400;
     let terminalFirstRow = $state(0);
     let terminalFollowsOutput = $state(true);
+    type TerminalDisplayLine = { line: string; index: number; slot: number; cursorOffset: number | null };
+    function buildTerminalDisplayLines(columns: number): TerminalDisplayLine[] {
+        const safeColumns = Math.max(1, columns);
+        const displayLines: TerminalDisplayLine[] = [];
+        const lastIndex = terminalData.length - 1;
+
+        for (let index = 0; index < terminalData.length; index++) {
+            const line = terminalData[index];
+            const cursorPosition = index === lastIndex ? Math.min(cursorX, line.length) : -1;
+            const cursorNeedsExtraRow =
+                cursorPosition === line.length && line.length > 0 && line.length % safeColumns === 0;
+            const rowCount = Math.max(1, Math.ceil(line.length / safeColumns)) + Number(cursorNeedsExtraRow);
+            const cursorRow = cursorPosition >= 0 ? Math.floor(cursorPosition / safeColumns) : -1;
+
+            for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
+                const start = rowIndex * safeColumns;
+                const end = Math.min(start + safeColumns, line.length);
+                displayLines.push({
+                    line: line.slice(start, end),
+                    index,
+                    slot: displayLines.length,
+                    cursorOffset: rowIndex === cursorRow ? cursorPosition - start : null
+                });
+            }
+        }
+
+        return displayLines;
+    }
+
+    let terminalDisplayLines = $derived.by(() => buildTerminalDisplayLines(terminalColumns));
     let visibleTerminalLines = $derived(
-        terminalData.slice(terminalFirstRow, terminalFirstRow + terminalRows).map((line, index) => ({
-            line,
-            index: terminalFirstRow + index,
-            slot: index
-        }))
+        terminalDisplayLines.slice(terminalFirstRow, terminalFirstRow + terminalRows)
     );
     let terminalScrollbarThumbSize = $derived(
-        Math.min(terminalRows, Math.max(1, Math.floor((terminalRows * terminalRows) / terminalData.length)))
+        Math.min(terminalRows, Math.max(1, Math.floor((terminalRows * terminalRows) / terminalDisplayLines.length)))
     );
     let terminalScrollbarThumbStart = $derived(
         Math.round(
-            (terminalFirstRow / Math.max(1, terminalData.length - terminalRows)) *
+            (terminalFirstRow / Math.max(1, terminalDisplayLines.length - terminalRows)) *
             (terminalRows - terminalScrollbarThumbSize)
         )
     );
@@ -81,6 +109,20 @@
     let terminalWheelDirection = 0;
     let terminalWheelLastAt = 0;
     let terminalWheelIgnoreUntil = 0;
+
+    function measureTerminalColumns() {
+        if (!alignedContent || !terminalElement) return;
+
+        const cellWidth = parseFloat(getComputedStyle(alignedContent).getPropertyValue("--grid-cell-width"));
+        if (!Number.isFinite(cellWidth) || cellWidth <= 0) return;
+
+        const columns = Math.max(1, Math.floor(terminalElement.getBoundingClientRect().width / cellWidth));
+        if (columns === terminalColumns) return;
+
+        terminalColumns = columns;
+        const maxFirstRow = Math.max(0, buildTerminalDisplayLines(columns).length - terminalRows);
+        terminalFirstRow = terminalFollowsOutput ? maxFirstRow : Math.min(terminalFirstRow, maxFirstRow);
+    }
 
     function generatePalette() {
         colorPalette = Array.from({ length: colorLevels + 1 }, (_, index) => {
@@ -302,7 +344,7 @@
 
         if (terminalRows !== (shouldUseTabs ? 18 : 12)) {
             terminalRows = shouldUseTabs ? 18 : 12;
-            const maxFirstRow = Math.max(0, terminalData.length - terminalRows);
+            const maxFirstRow = Math.max(0, buildTerminalDisplayLines(terminalColumns).length - terminalRows);
             terminalFirstRow = terminalFollowsOutput ? maxFirstRow : Math.min(terminalFirstRow, maxFirstRow);
         }
     }
@@ -371,6 +413,7 @@
             if (!active || overlayMeasureFrame) return;
             overlayMeasureFrame = requestAnimationFrame(() => {
                 overlayMeasureFrame = 0;
+                measureTerminalColumns();
                 measureOverlayOverflow();
             });
         };
@@ -381,6 +424,7 @@
         overlayResizeObserver.observe(alignedContent);
         overlayResizeObserver.observe(zfetchPanel);
         overlayResizeObserver.observe(terminalPanel);
+        overlayResizeObserver.observe(terminalElement);
 
         const intervalId = setInterval(() => {
             if (!document.hidden) {
@@ -455,7 +499,7 @@
             terminalData.push(parts[i]);
         }
         if (terminalFollowsOutput) {
-            terminalFirstRow = Math.max(0, terminalData.length - terminalRows);
+            terminalFirstRow = Math.max(0, buildTerminalDisplayLines(terminalColumns).length - terminalRows);
             resetTerminalWheelMotion();
         }
     };
@@ -501,13 +545,13 @@
         const direction = Math.sign(terminalWheelRemainder);
         terminalWheelRemainder = 0;
 
-        const maxFirstRow = Math.max(0, terminalData.length - terminalRows);
+        const maxFirstRow = Math.max(0, buildTerminalDisplayLines(terminalColumns).length - terminalRows);
         terminalFirstRow = Math.max(0, Math.min(maxFirstRow, terminalFirstRow + direction));
         terminalFollowsOutput = terminalFirstRow === maxFirstRow;
     }
 
     function showTerminalTail() {
-        terminalFirstRow = Math.max(0, terminalData.length - terminalRows);
+        terminalFirstRow = Math.max(0, buildTerminalDisplayLines(terminalColumns).length - terminalRows);
         terminalFollowsOutput = true;
         resetTerminalWheelMotion();
     }
@@ -745,27 +789,23 @@
                 <p>!/bin/sh</p>
                 <p>[running]</p>
             </div>
-            <div style={`--reveal-delay:50; --terminal-rows:${terminalRows}`} class:has-scrollbar={terminalData.length > terminalRows} class="terminal-layout" on:wheel|nonpassive={onTerminalWheel}>
-                <div class="whitespace-pre terminal">
+            <div style={`--reveal-delay:50; --terminal-rows:${terminalRows}`} class="terminal-layout" on:wheel|nonpassive={onTerminalWheel}>
+                <div bind:this={terminalElement} class="terminal">
                     {#each visibleTerminalLines as row (row.slot)}
-                        <div class="flex flex-row">
-                            {#if row.index === terminalData.length - 1}
-                                <p>{row.line.substring(0, cursorX)}</p>
-                                <p class:solid={cursorSolid} class="terminal-cursor">{cursorX < row.line.length ? row.line[cursorX] : " "}</p>
-                                <p>{row.line.substring(cursorX + 1)}</p>
+                        <div class="terminal-line flex flex-row">
+                            {#if row.cursorOffset !== null}
+                                <p>{row.line.substring(0, row.cursorOffset)}</p><p class:solid={cursorSolid} class="terminal-cursor">{row.cursorOffset < row.line.length ? row.line[row.cursorOffset] : " "}</p><p>{row.line.substring(row.cursorOffset + 1)}</p>
                             {:else}
                                 <p>{row.line}</p>
                             {/if}
                         </div>
                     {/each}
                 </div>
-                {#if terminalData.length > terminalRows}
-                    <div class="terminal-scrollbar" aria-hidden="true">
-                        {#each terminalScrollbarRows as isThumb, index (index)}
-                            <span class:terminal-scrollbar-thumb={isThumb}>&nbsp;</span>
-                        {/each}
-                    </div>
-                {/if}
+                <div class:scrollbar-hidden={terminalDisplayLines.length <= terminalRows} class="terminal-scrollbar" aria-hidden="true">
+                    {#each terminalScrollbarRows as isThumb, index (index)}
+                        <span class:terminal-scrollbar-thumb={isThumb}>&nbsp;</span>
+                    {/each}
+                </div>
             </div>
                 </div>
             </div>
@@ -804,6 +844,8 @@
 
     .overlay-block {
         place-self: center;
+        min-width: 0;
+        max-width: 100vw;
         margin: 0;
         color: white;
         font-size: var(--grid-font-size);
@@ -814,6 +856,9 @@
     }
 
     .aligned-content {
+        box-sizing: border-box;
+        min-width: 0;
+        max-width: 100vw;
         padding: var(--grid-cell-height) calc(var(--grid-cell-width) * 2);
         border-radius: 5px;
         background-color: rgba(0, 0, 0, 0.3);
@@ -832,6 +877,11 @@
 
     .overlay-panel {
         display: flow-root;
+    }
+
+    .terminal-panel {
+        box-sizing: border-box;
+        max-width: 80ch;
     }
 
     .overlay-tab {
@@ -885,13 +935,15 @@
 
     .terminal-layout {
         display: grid;
-        grid-template-columns: minmax(0, 1fr);
-        height: calc(var(--terminal-rows) * var(--grid-cell-height));
-    }
-
-    .terminal-layout.has-scrollbar {
         grid-template-columns: minmax(0, 1fr) var(--grid-cell-width);
         column-gap: var(--grid-cell-width);
+        height: calc(var(--terminal-rows) * var(--grid-cell-height));
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .terminal-scrollbar.scrollbar-hidden {
+        visibility: hidden;
     }
 
     .terminal-scrollbar {
@@ -915,9 +967,30 @@
     }
 
     .terminal {
+        width: 100%;
         min-width: 0;
+        max-width: 100%;
         height: 100%;
         overflow: hidden;
+        white-space: pre;
+    }
+
+    .terminal-line {
+        display: flex;
+        flex-flow: row nowrap;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        height: var(--grid-cell-height);
+        line-height: var(--grid-cell-height);
+        overflow: hidden;
+        white-space: pre;
+    }
+
+    .terminal-line p {
+        flex: 0 0 auto;
+        margin: 0;
+        white-space: pre;
     }
 
     .aligned-content .terminal-layout,
@@ -933,6 +1006,13 @@
     }
 
     .aligned-content .terminal p.terminal-cursor {
+        flex: 0 0 var(--grid-cell-width);
+        box-sizing: border-box;
+        width: var(--grid-cell-width);
+        min-width: var(--grid-cell-width);
+        height: var(--grid-cell-height);
+        line-height: var(--grid-cell-height);
+        white-space: pre;
         animation: cursor-blink 1s steps(1, end) infinite;
     }
 
