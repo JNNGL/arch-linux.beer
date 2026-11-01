@@ -9,9 +9,14 @@
 
     let canvas: HTMLCanvasElement;
     let overlay: HTMLElement;
+    let alignedContent: HTMLDivElement;
+    let zfetchPanel: HTMLDivElement;
+    let terminalPanel: HTMLDivElement;
 
     let viewportWidth = $state(0);
     let viewportHeight = $state(0);
+    let overlayOverflow = $state(false);
+    let activeOverlayTab = $state<"zfetch" | "terminal">("zfetch");
 
     let operatingSystem = $state("");
     let host = $state("");
@@ -45,7 +50,7 @@
     let commandHistoryDraft = "";
     let terminalData: Array<string> = $state([promptLine]);
     let cursorX = $state(promptLine.length);
-    const terminalRows = 12;
+    let terminalRows = $state(12);
     const terminalWheelCooldown = 400;
     let terminalFirstRow = $state(0);
     let terminalFollowsOutput = $state(true);
@@ -270,6 +275,30 @@
         }
     }
 
+    function measureOverlayOverflow() {
+        if (!alignedContent || !zfetchPanel || !terminalPanel) return;
+
+        const style = getComputedStyle(alignedContent);
+        const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+        const cellHeight = parseFloat(style.getPropertyValue("--grid-cell-height"));
+        if (!Number.isFinite(cellHeight)) return;
+
+        const panelsHeight = zfetchPanel.getBoundingClientRect().height + terminalPanel.getBoundingClientRect().height;
+        const panelsHeightAtTwelveRows =
+            panelsHeight - Math.max(0, terminalRows - 12) * cellHeight + (overlayOverflow ? cellHeight : 0);
+        const availableHeight = window.visualViewport?.height ?? window.innerHeight;
+        const shouldUseTabs = panelsHeightAtTwelveRows + padding > availableHeight + 1;
+
+        if (shouldUseTabs && !overlayOverflow) activeOverlayTab = "zfetch";
+        overlayOverflow = shouldUseTabs;
+
+        if (terminalRows !== (shouldUseTabs ? 18 : 12)) {
+            terminalRows = shouldUseTabs ? 18 : 12;
+            const maxFirstRow = Math.max(0, terminalData.length - terminalRows);
+            terminalFirstRow = terminalFollowsOutput ? maxFirstRow : Math.min(terminalFirstRow, maxFirstRow);
+        }
+    }
+
     onMount(() => {
         generatePalette();
 
@@ -277,6 +306,7 @@
 
         let active = true;
         let frameId = 0;
+        let overlayMeasureFrame = 0;
         const visualViewport = window.visualViewport;
 
         import("svelte-system-info").then((System) => {
@@ -301,8 +331,20 @@
             });
         };
 
+        const scheduleOverlayMeasure = () => {
+            if (!active || overlayMeasureFrame) return;
+            overlayMeasureFrame = requestAnimationFrame(() => {
+                overlayMeasureFrame = 0;
+                measureOverlayOverflow();
+            });
+        };
+
         const resizeObserver = new ResizeObserver(scheduleRender);
         resizeObserver.observe(canvas);
+        const overlayResizeObserver = new ResizeObserver(scheduleOverlayMeasure);
+        overlayResizeObserver.observe(alignedContent);
+        overlayResizeObserver.observe(zfetchPanel);
+        overlayResizeObserver.observe(terminalPanel);
 
         const intervalId = setInterval(() => {
             if (!document.hidden) {
@@ -328,22 +370,34 @@
         }, 50);
 
         addEventListener("resize", scheduleRender);
+        addEventListener("resize", scheduleOverlayMeasure);
 
         visualViewport?.addEventListener("resize", scheduleRender);
         visualViewport?.addEventListener("scroll", scheduleRender);
+        visualViewport?.addEventListener("resize", scheduleOverlayMeasure);
+        visualViewport?.addEventListener("scroll", scheduleOverlayMeasure);
 
         scheduleRender();
+        scheduleOverlayMeasure();
 
-        void document.fonts.ready.then(scheduleRender);
+        void document.fonts.ready.then(() => {
+            scheduleRender();
+            scheduleOverlayMeasure();
+        });
 
         return () => {
             active = false;
             if (frameId) cancelAnimationFrame(frameId);
+            if (overlayMeasureFrame) cancelAnimationFrame(overlayMeasureFrame);
             clearInterval(intervalId);
             resizeObserver.disconnect();
+            overlayResizeObserver.disconnect();
             removeEventListener("resize", scheduleRender);
+            removeEventListener("resize", scheduleOverlayMeasure);
             visualViewport?.removeEventListener("resize", scheduleRender);
             visualViewport?.removeEventListener("scroll", scheduleRender);
+            visualViewport?.removeEventListener("resize", scheduleOverlayMeasure);
+            visualViewport?.removeEventListener("scroll", scheduleOverlayMeasure);
         }
     });
 
@@ -468,7 +522,14 @@
         const control = event.ctrlKey;
         const alt = event.altKey;
         const regular = !event.altKey && !event.ctrlKey && !event.metaKey;
-        if (regular && event.key.length == 1) {
+        if (overlayOverflow && event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && ["ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown"].includes(event.key)) {
+            const tabs = ["zfetch", "terminal"] as const;
+            const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
+            const currentIndex = tabs.indexOf(activeOverlayTab);
+            activeOverlayTab = tabs[(currentIndex + direction + tabs.length) % tabs.length];
+        } else if (overlayOverflow && activeOverlayTab !== "terminal") {
+            return;
+        } else if (regular && event.key.length == 1) {
             holdCursorSolid();
             commandLine = commandLine.substring(0, cursorX - promptLine.length) + event.key + commandLine.substring(cursorX - promptLine.length);
             terminalData[terminalData.length - 1] = promptLine + commandLine;
@@ -546,8 +607,45 @@
 
 <div class="overlay" style={gridStyle}>
     <section bind:this={overlay} class="overlay-block">
-        <div class="aligned-content">
-            <div style="gap: var(--grid-cell-width);" class="flex flex-row flex-wrap">
+        <div bind:this={alignedContent} class:overlay-overflow={overlayOverflow} class="aligned-content">
+            {#if overlayOverflow}
+                <div class="overlay-tabs" role="tablist" aria-label="Overlay views">
+                    <button
+                        type="button"
+                        role="tab"
+                        id="overlay-tab-zfetch"
+                        aria-controls="overlay-panel-zfetch"
+                        aria-selected={activeOverlayTab === "zfetch"}
+                        tabindex={activeOverlayTab === "zfetch" ? 0 : -1}
+                        class:active={activeOverlayTab === "zfetch"}
+                        class="overlay-tab"
+                        on:click={() => activeOverlayTab = "zfetch"}
+                    >&nbsp;zfetch</button>
+                    <button
+                        type="button"
+                        role="tab"
+                        id="overlay-tab-terminal"
+                        aria-controls="overlay-panel-terminal"
+                        aria-selected={activeOverlayTab === "terminal"}
+                        tabindex={activeOverlayTab === "terminal" ? 0 : -1}
+                        class:active={activeOverlayTab === "terminal"}
+                        class="overlay-tab"
+                        on:click={() => activeOverlayTab = "terminal"}
+                    >terminal</button>
+                </div>
+            {/if}
+            <div class="overlay-panels">
+                <div
+                    bind:this={zfetchPanel}
+                    class:overlay-panel-inactive={overlayOverflow && activeOverlayTab !== "zfetch"}
+                    class="overlay-panel zfetch-panel"
+                    id="overlay-panel-zfetch"
+                    role={overlayOverflow ? "tabpanel" : undefined}
+                    aria-labelledby={overlayOverflow ? "overlay-tab-zfetch" : undefined}
+                    aria-hidden={overlayOverflow && activeOverlayTab !== "zfetch"}
+                    inert={overlayOverflow && activeOverlayTab !== "zfetch"}
+                >
+                    <div style="gap: var(--grid-cell-width);" class="flex flex-row flex-wrap">
                 <div style="--reveal-delay:40" class="text-blue-300">
                     <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-`</p>
                     <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.o+`</p>
@@ -589,9 +687,20 @@
                         <div class="flex flex-row"><p class="bg-neutral-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-red-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-emerald-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-yellow-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-blue-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-fuchsia-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-cyan-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-white">&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
                     </div>
                 </div>
-            </div>
-            <div style="--reveal-delay:45; padding: 0 var(--grid-cell-width); margin: var(--grid-cell-height) 0;"
-                 class="flex flex-row grow justify-between bg-emerald-400 text-neutral-950">
+                    </div>
+                </div>
+                <div
+                    bind:this={terminalPanel}
+                    class:overlay-panel-inactive={overlayOverflow && activeOverlayTab !== "terminal"}
+                    class="overlay-panel terminal-panel"
+                    id="overlay-panel-terminal"
+                    role={overlayOverflow ? "tabpanel" : undefined}
+                    aria-labelledby={overlayOverflow ? "overlay-tab-terminal" : undefined}
+                    aria-hidden={overlayOverflow && activeOverlayTab !== "terminal"}
+                    inert={overlayOverflow && activeOverlayTab !== "terminal"}
+                >
+                    <div style="--reveal-delay:45; padding: 0 var(--grid-cell-width);"
+                 class="terminal-header flex flex-row grow justify-between bg-emerald-400 text-neutral-950">
                 <p>!/bin/sh</p>
                 <p>[running]</p>
             </div>
@@ -616,6 +725,8 @@
                         {/each}
                     </div>
                 {/if}
+            </div>
+                </div>
             </div>
         </div>
     </section>
@@ -667,6 +778,68 @@
         background-color: rgba(0, 0, 0, 0.3);
         backdrop-filter: blur(20px);
         transform: translateX(var(--overlay-translate-x)) translateY(var(--overlay-translate-y));
+    }
+
+    .aligned-content .overlay-tabs {
+        display: flex;
+        gap: var(--grid-cell-width);
+        margin-bottom: var(--grid-cell-height);
+        opacity: 1;
+        animation: none;
+        user-select: none;
+    }
+
+    .overlay-panel {
+        display: flow-root;
+    }
+
+    .overlay-tab {
+        width: calc(var(--grid-cell-width) * 8);
+        height: var(--grid-cell-height);
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        color: inherit;
+        background: transparent;
+        font: inherit;
+        line-height: var(--grid-cell-height);
+        letter-spacing: inherit;
+        text-align: start;
+        white-space: nowrap;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .overlay-tab:focus-visible {
+        outline: none;
+    }
+
+    .overlay-tab.active {
+        color: black;
+        background: white;
+    }
+
+    .overlay-overflow .overlay-panels {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        align-items: stretch;
+    }
+
+    .overlay-overflow .overlay-panel {
+        grid-area: 1 / 1;
+        min-width: 0;
+    }
+
+    .overlay-overflow .overlay-panel-inactive {
+        visibility: hidden;
+    }
+
+    .terminal-header {
+        margin: var(--grid-cell-height) 0;
+    }
+
+    .overlay-overflow .terminal-header {
+        margin-top: 0;
     }
 
     .terminal-layout {
