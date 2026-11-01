@@ -17,6 +17,8 @@
     let viewportHeight = $state(0);
     let overlayOverflow = $state(false);
     let activeOverlayTab = $state<"zfetch" | "terminal">("zfetch");
+    let initialOverlayMeasurementDone = false;
+    let animateInitialOverlayTabs = false;
 
     let operatingSystem = $state("");
     let host = $state("");
@@ -277,6 +279,7 @@
 
     function measureOverlayOverflow() {
         if (!alignedContent || !zfetchPanel || !terminalPanel) return;
+        if (!initialOverlayMeasurementDone && document.fonts.status === "loading") return;
 
         const style = getComputedStyle(alignedContent);
         const padding = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
@@ -289,6 +292,11 @@
         const availableHeight = window.visualViewport?.height ?? window.innerHeight;
         const shouldUseTabs = panelsHeightAtTwelveRows + padding > availableHeight + 1;
 
+        if (!initialOverlayMeasurementDone) {
+            animateInitialOverlayTabs = shouldUseTabs;
+            initialOverlayMeasurementDone = true;
+        }
+
         if (shouldUseTabs && !overlayOverflow) activeOverlayTab = "zfetch";
         overlayOverflow = shouldUseTabs;
 
@@ -297,6 +305,34 @@
             const maxFirstRow = Math.max(0, terminalData.length - terminalRows);
             terminalFirstRow = terminalFollowsOutput ? maxFirstRow : Math.min(terminalFirstRow, maxFirstRow);
         }
+    }
+
+    function animateInitialTabs(node: HTMLElement) {
+        if (!animateInitialOverlayTabs) return;
+
+        animateInitialOverlayTabs = false;
+        const delay = 2050;
+        node.inert = true;
+        node.style.pointerEvents = "none";
+        const enableTabs = setTimeout(() => {
+            node.inert = false;
+            node.style.removeProperty("pointer-events");
+        }, delay);
+
+        const animation = node.animate(
+            [
+                { opacity: 0, transform: "translateX(-3px)" },
+                { opacity: 1, transform: "translateX(0)" }
+            ],
+            { duration: 150, easing: "ease", delay, fill: "backwards" }
+        );
+
+        return {
+            destroy() {
+                clearTimeout(enableTabs);
+                animation.cancel();
+            }
+        };
     }
 
     onMount(() => {
@@ -609,7 +645,12 @@
     <section bind:this={overlay} class="overlay-block">
         <div bind:this={alignedContent} class:overlay-overflow={overlayOverflow} class="aligned-content">
             {#if overlayOverflow}
-                <div class="overlay-tabs" role="tablist" aria-label="Overlay views">
+                <div
+                    use:animateInitialTabs
+                    class="overlay-tabs"
+                    role="tablist"
+                    aria-label="Overlay views"
+                >
                     <button
                         type="button"
                         role="tab"
@@ -645,48 +686,48 @@
                     aria-hidden={overlayOverflow && activeOverlayTab !== "zfetch"}
                     inert={overlayOverflow && activeOverlayTab !== "zfetch"}
                 >
-                    <div style="gap: var(--grid-cell-width);" class="flex flex-row flex-wrap">
-                <div style="--reveal-delay:40" class="text-blue-300">
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-`</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.o+`</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`ooo/</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`+oooo:</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`+oooooo:</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-+oooooo+:</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/:-:++oooo+:</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/++++/+++++++:</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/++++++++++++++:</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/+++ooooooooooooo/`</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;./ooosssso++osssssso+`</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.oossssso-````/ossssss+`</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-osssssso.&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:ssssssso.</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:osssssss/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;osssso+++.</p>
-                    <p>&nbsp;&nbsp;&nbsp;&nbsp;/ossssssss/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ssssooo/-</p>
-                    <p>&nbsp;&nbsp;`/ossssso+/:-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-:/+osssso+-</p>
-                    <p>&nbsp;`+sso+:-`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`.-/+oso:</p>
-                    <p>`++:.&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`-/+/</p>
-                    <p>.`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/</p>
-                </div>
-                <div>
-                    <p style="--reveal-delay:10"><span class="text-blue-300">root</span>@<span class="text-blue-300">arch-linux.beer</span></p>
-                    <p style="--reveal-delay:10">--------------------</p>
-                    <p style="--reveal-delay:11"><span class="text-blue-300">OS</span>: {operatingSystem}</p>
-                    <p style="--reveal-delay:12"><span class="text-blue-300">Host</span>: {host}</p>
-                    <p style="--reveal-delay:16"><span class="text-blue-300">Packages</span>: 23 (npm)</p>
-                    <p style="--reveal-delay:19"><span class="text-blue-300">Resolution</span>: {viewportWidth}x{viewportHeight}</p>
-                    <p style="--reveal-delay:20"><span class="text-blue-300">Font</span>: JetBrains Mono</p>
-                    <p></p>
-                    <p style="--reveal-delay:22" class="text-blue-300">Links</p>
-                    <p style="--reveal-delay:22">-----</p>
-                    <p style="--reveal-delay:23"><span class="text-blue-300">GitHub</span>: https://github.com/JNNGL</p>
-                    <p style="--reveal-delay:24"><span class="text-blue-300">Telegram</span>: https://t.me/jnngles</p>
-                    <p style="--reveal-delay:25"><span class="text-blue-300">Email</span>: jnngl@arch-linux.beer</p>
-                    <p></p>
-                    <div style="--reveal-delay:30">
-                        <div class="flex flex-row"><p class="bg-neutral-600">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-red-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-emerald-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-yellow-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-blue-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-fuchsia-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-cyan-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-neutral-200">&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
-                        <div class="flex flex-row"><p class="bg-neutral-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-red-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-emerald-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-yellow-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-blue-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-fuchsia-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-cyan-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-white">&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
-                    </div>
-                </div>
+                    <div style="row-gap: var(--grid-cell-height); column-gap: var(--grid-cell-width);" class="flex flex-row flex-wrap">
+                        <div style="--reveal-delay:40" class="text-blue-300">
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-`</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.o+`</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`ooo/</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`+oooo:</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`+oooooo:</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-+oooooo+:</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/:-:++oooo+:</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/++++/+++++++:</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/++++++++++++++:</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/+++ooooooooooooo/`</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;./ooosssso++osssssso+`</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.oossssso-````/ossssss+`</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-osssssso.&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:ssssssso.</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:osssssss/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;osssso+++.</p>
+                            <p>&nbsp;&nbsp;&nbsp;&nbsp;/ossssssss/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ssssooo/-</p>
+                            <p>&nbsp;&nbsp;`/ossssso+/:-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-:/+osssso+-</p>
+                            <p>&nbsp;`+sso+:-`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`.-/+oso:</p>
+                            <p>`++:.&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`-/+/</p>
+                            <p>.`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/</p>
+                        </div>
+                        <div>
+                            <p style="--reveal-delay:10"><span class="text-blue-300">root</span>@<span class="text-blue-300">arch-linux.beer</span></p>
+                            <p style="--reveal-delay:10">--------------------</p>
+                            <p style="--reveal-delay:11"><span class="text-blue-300">OS</span>: {operatingSystem}</p>
+                            <p style="--reveal-delay:12"><span class="text-blue-300">Host</span>: {host}</p>
+                            <p style="--reveal-delay:16"><span class="text-blue-300">Packages</span>: 23 (npm)</p>
+                            <p style="--reveal-delay:19"><span class="text-blue-300">Resolution</span>: {viewportWidth}x{viewportHeight}</p>
+                            <p style="--reveal-delay:20"><span class="text-blue-300">Font</span>: JetBrains Mono</p>
+                            <p></p>
+                            <p style="--reveal-delay:22" class="text-blue-300">Links</p>
+                            <p style="--reveal-delay:22">-----</p>
+                            <p style="--reveal-delay:23"><span class="text-blue-300">GitHub</span>: https://github.com/JNNGL</p>
+                            <p style="--reveal-delay:24"><span class="text-blue-300">Telegram</span>: https://t.me/jnngles</p>
+                            <p style="--reveal-delay:25"><span class="text-blue-300">Email</span>: jnngl@arch-linux.beer</p>
+                            <p></p>
+                            <div style="--reveal-delay:30">
+                                <div class="flex flex-row"><p class="bg-neutral-600">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-red-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-emerald-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-yellow-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-blue-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-fuchsia-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-cyan-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-neutral-200">&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
+                                <div class="flex flex-row"><p class="bg-neutral-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-red-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-emerald-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-yellow-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-blue-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-fuchsia-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-cyan-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-white">&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div
