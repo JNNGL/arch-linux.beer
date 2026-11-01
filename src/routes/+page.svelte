@@ -40,6 +40,9 @@
 
     let promptLine = getPromptLine();
     let commandLine = "";
+    let commandHistory: string[] = [];
+    let commandHistoryIndex = -1;
+    let commandHistoryDraft = "";
     let terminalData: Array<string> = $state([promptLine]);
     let cursorX = $state(promptLine.length);
     const terminalRows = 12;
@@ -419,6 +422,48 @@
         resetTerminalWheelMotion();
     }
 
+    function moveCursorByWord(direction: -1 | 1) {
+        let position = cursorX - promptLine.length;
+
+        if (direction < 0) {
+            while (position > 0 && /\s/.test(commandLine[position - 1])) position--;
+            while (position > 0 && !/\s/.test(commandLine[position - 1])) position--;
+        } else {
+            while (position < commandLine.length && /\s/.test(commandLine[position])) position++;
+            while (position < commandLine.length && !/\s/.test(commandLine[position])) position++;
+        }
+
+        cursorX = promptLine.length + position;
+    }
+
+    function navigateCommandHistory(direction: -1 | 1) {
+        if (commandHistory.length === 0) return;
+
+        if (direction < 0) {
+            if (commandHistoryIndex === -1) {
+                commandHistoryDraft = commandLine;
+                commandHistoryIndex = commandHistory.length;
+            }
+            commandHistoryIndex = Math.max(0, commandHistoryIndex - 1);
+            commandLine = commandHistory[commandHistoryIndex] ?? "";
+        } else {
+            if (commandHistoryIndex === -1) return;
+            commandHistoryIndex++;
+            if (commandHistoryIndex >= commandHistory.length) {
+                commandHistoryIndex = -1;
+                commandLine = commandHistoryDraft;
+                commandHistoryDraft = "";
+            } else {
+                commandLine = commandHistory[commandHistoryIndex] ?? "";
+            }
+        }
+
+        terminalData[terminalData.length - 1] = promptLine + commandLine;
+        cursorX = promptLine.length + commandLine.length;
+        holdCursorSolid();
+        showTerminalTail();
+    }
+
     function onKeyDown(event: KeyboardEvent) {
         const control = event.ctrlKey;
         const alt = event.altKey;
@@ -441,7 +486,7 @@
             holdCursorSolid();
             if (cursorX > promptLine.length) {
                 if (event.altKey) {
-                    cursorX = promptLine.length;
+                    moveCursorByWord(-1);
                 } else {
                     cursorX--;
                 }
@@ -451,14 +496,20 @@
             holdCursorSolid();
             if (cursorX < promptLine.length + commandLine.length) {
                 if (event.altKey) {
-                    cursorX = promptLine.length + commandLine.length;
+                    moveCursorByWord(1);
                 } else {
                     cursorX++;
                 }
                 showTerminalTail();
             }
+        } else if (regular && event.key === "ArrowUp") {
+            navigateCommandHistory(-1);
+        } else if (regular && event.key === "ArrowDown") {
+            navigateCommandHistory(1);
         } else if (control && event.key === "c") {
             commandLine = "";
+            commandHistoryIndex = -1;
+            commandHistoryDraft = "";
             terminalData[terminalData.length - 1] += "^C";
             terminalData.push(promptLine);
             cursorX = promptLine.length;
@@ -466,10 +517,16 @@
         } else if (event.key === "Enter") {
             terminalData.push("");
             if (commandLine.trim().length > 0) {
+                commandHistory.push(commandLine);
+                commandHistoryIndex = -1;
+                commandHistoryDraft = "";
                 const code = processCommand(commandLine, terminalOutputPipe);
                 if (code < 0) {
                     setErrorBackground();
                 }
+            } else {
+                commandHistoryIndex = -1;
+                commandHistoryDraft = "";
             }
             promptLine = getPromptLine();
             commandLine = "";
