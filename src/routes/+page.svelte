@@ -42,6 +42,35 @@
     let commandLine = "";
     let terminalData: Array<string> = $state([promptLine]);
     let cursorX = $state(promptLine.length);
+    const terminalRows = 12;
+    const terminalWheelCooldown = 400;
+    let terminalFirstRow = $state(0);
+    let terminalFollowsOutput = $state(true);
+    let visibleTerminalLines = $derived(
+        terminalData.slice(terminalFirstRow, terminalFirstRow + terminalRows).map((line, index) => ({
+            line,
+            index: terminalFirstRow + index,
+            slot: index
+        }))
+    );
+    let terminalScrollbarThumbSize = $derived(
+        Math.min(terminalRows, Math.max(1, Math.floor((terminalRows * terminalRows) / terminalData.length)))
+    );
+    let terminalScrollbarThumbStart = $derived(
+        Math.round(
+            (terminalFirstRow / Math.max(1, terminalData.length - terminalRows)) *
+            (terminalRows - terminalScrollbarThumbSize)
+        )
+    );
+    let terminalScrollbarRows = $derived(
+        Array.from({ length: terminalRows }, (_, index) =>
+            index >= terminalScrollbarThumbStart && index < terminalScrollbarThumbStart + terminalScrollbarThumbSize
+        )
+    );
+    let terminalWheelRemainder = 0;
+    let terminalWheelDirection = 0;
+    let terminalWheelLastAt = 0;
+    let terminalWheelIgnoreUntil = 0;
 
     function generatePalette() {
         colorPalette = Array.from({ length: colorLevels + 1 }, (_, index) => {
@@ -332,7 +361,63 @@
         for (let i = 1; i < parts.length; i++) {
             terminalData.push(parts[i]);
         }
+        if (terminalFollowsOutput) {
+            terminalFirstRow = Math.max(0, terminalData.length - terminalRows);
+            resetTerminalWheelMotion();
+        }
     };
+
+    function resetTerminalWheelMotion() {
+        terminalWheelRemainder = 0;
+        terminalWheelDirection = 0;
+        terminalWheelLastAt = 0;
+        terminalWheelIgnoreUntil = performance.now() + terminalWheelCooldown;
+    }
+
+    function onTerminalWheel(event: WheelEvent) {
+        if (event.deltaY === 0) return;
+
+        event.preventDefault();
+        if (performance.now() < terminalWheelIgnoreUntil) return;
+
+        const terminal = event.currentTarget as HTMLElement;
+        const rowHeight = parseFloat(getComputedStyle(terminal).lineHeight);
+        if (!Number.isFinite(rowHeight) || rowHeight <= 0) return;
+
+        let delta = event.deltaY;
+        if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+            delta *= rowHeight;
+        } else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+            delta *= terminal.clientHeight;
+        }
+
+        const now = event.timeStamp;
+        if (now - terminalWheelLastAt >= 120) {
+            terminalWheelDirection = 0;
+            terminalWheelRemainder = 0;
+        }
+
+        const eventDirection = Math.sign(delta);
+        if (terminalWheelDirection && eventDirection !== terminalWheelDirection) return;
+
+        terminalWheelDirection = eventDirection;
+        terminalWheelLastAt = now;
+        terminalWheelRemainder += delta;
+        if (Math.abs(terminalWheelRemainder) < rowHeight) return;
+
+        const direction = Math.sign(terminalWheelRemainder);
+        terminalWheelRemainder = 0;
+
+        const maxFirstRow = Math.max(0, terminalData.length - terminalRows);
+        terminalFirstRow = Math.max(0, Math.min(maxFirstRow, terminalFirstRow + direction));
+        terminalFollowsOutput = terminalFirstRow === maxFirstRow;
+    }
+
+    function showTerminalTail() {
+        terminalFirstRow = Math.max(0, terminalData.length - terminalRows);
+        terminalFollowsOutput = true;
+        resetTerminalWheelMotion();
+    }
 
     function onKeyDown(event: KeyboardEvent) {
         const control = event.ctrlKey;
@@ -343,12 +428,14 @@
             commandLine = commandLine.substring(0, cursorX - promptLine.length) + event.key + commandLine.substring(cursorX - promptLine.length);
             terminalData[terminalData.length - 1] = promptLine + commandLine;
             cursorX++;
+            showTerminalTail();
         } else if (event.key === "Backspace") {
             holdCursorSolid();
             if (cursorX > promptLine.length) {
                 commandLine = commandLine.substring(0, cursorX - promptLine.length - 1) + commandLine.substring(cursorX - promptLine.length);
                 terminalData[terminalData.length - 1] = promptLine + commandLine;
                 cursorX--;
+                showTerminalTail();
             }
         } else if ((regular || alt) && event.key === "ArrowLeft") {
             holdCursorSolid();
@@ -358,6 +445,7 @@
                 } else {
                     cursorX--;
                 }
+                showTerminalTail();
             }
         } else if ((regular || alt) && event.key === "ArrowRight") {
             holdCursorSolid();
@@ -367,12 +455,14 @@
                 } else {
                     cursorX++;
                 }
+                showTerminalTail();
             }
         } else if (control && event.key === "c") {
             commandLine = "";
             terminalData[terminalData.length - 1] += "^C";
             terminalData.push(promptLine);
             cursorX = promptLine.length;
+            showTerminalTail();
         } else if (event.key === "Enter") {
             terminalData.push("");
             if (commandLine.trim().length > 0) {
@@ -388,6 +478,7 @@
             }
             terminalData.push(promptLine);
             cursorX = promptLine.length;
+            showTerminalTail();
         }
     }
 </script>
@@ -447,18 +538,27 @@
                 <p>!/bin/sh</p>
                 <p>[running]</p>
             </div>
-            <div style="--reveal-delay:50" class="whitespace-pre terminal">
-                {#each terminalData as line, index (index)}
-                    {#if index === terminalData.length - 1}
+            <div style={`--reveal-delay:50; --terminal-rows:${terminalRows}`} class:has-scrollbar={terminalData.length > terminalRows} class="terminal-layout" on:wheel|nonpassive={onTerminalWheel}>
+                <div class="whitespace-pre terminal">
+                    {#each visibleTerminalLines as row (row.slot)}
                         <div class="flex flex-row">
-                            <p>{line.substring(0, cursorX)}</p>
-                            <p class:solid={cursorSolid} class="terminal-cursor">{cursorX < line.length ? line[cursorX] : " "}</p>
-                            <p>{line.substring(cursorX + 1)}</p>
+                            {#if row.index === terminalData.length - 1}
+                                <p>{row.line.substring(0, cursorX)}</p>
+                                <p class:solid={cursorSolid} class="terminal-cursor">{cursorX < row.line.length ? row.line[cursorX] : " "}</p>
+                                <p>{row.line.substring(cursorX + 1)}</p>
+                            {:else}
+                                <p>{row.line}</p>
+                            {/if}
                         </div>
-                    {:else}
-                        <p>{line}</p>
-                    {/if}
-                {/each}
+                    {/each}
+                </div>
+                {#if terminalData.length > terminalRows}
+                    <div class="terminal-scrollbar" aria-hidden="true">
+                        {#each terminalScrollbarRows as isThumb, index (index)}
+                            <span class:terminal-scrollbar-thumb={isThumb}>&nbsp;</span>
+                        {/each}
+                    </div>
+                {/if}
             </div>
         </div>
     </section>
@@ -510,6 +610,50 @@
         background-color: rgba(0, 0, 0, 0.3);
         backdrop-filter: blur(20px);
         transform: translateX(var(--overlay-translate-x)) translateY(var(--overlay-translate-y));
+    }
+
+    .terminal-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        height: calc(var(--terminal-rows) * var(--grid-cell-height));
+    }
+
+    .terminal-layout.has-scrollbar {
+        grid-template-columns: minmax(0, 1fr) var(--grid-cell-width);
+        column-gap: var(--grid-cell-width);
+    }
+
+    .terminal-scrollbar {
+        display: grid;
+        grid-template-rows: repeat(var(--terminal-rows), var(--grid-cell-height));
+        width: var(--grid-cell-width);
+        height: 100%;
+    }
+
+    .terminal-scrollbar span {
+        display: block;
+        width: 100%;
+        height: var(--grid-cell-height);
+        line-height: var(--grid-cell-height);
+        white-space: pre;
+        background-color: rgb(255 255 255 / 12%);
+    }
+
+    .terminal-scrollbar .terminal-scrollbar-thumb {
+        background-color: rgb(255 255 255 / 70%);
+    }
+
+    .terminal {
+        min-width: 0;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    .aligned-content .terminal-layout,
+    .aligned-content .terminal-scrollbar,
+    .aligned-content .terminal-scrollbar span {
+        animation: none;
+        opacity: 1;
     }
 
     .aligned-content .terminal *:not(.terminal-cursor) {
