@@ -5,7 +5,13 @@
     import {expoOut} from "svelte/easing";
 
     import {processCommand} from "#lib/command.ts";
-    import {getDisplayCWD, loadStaticWebFiles} from "#lib/filesystem.ts";
+    import {
+        getCommandCompletions,
+        getDisplayCWD,
+        getPathCompletions,
+        loadStaticWebFiles,
+        type CompletionCandidate
+    } from "#lib/filesystem.ts";
 
     let canvas: HTMLCanvasElement;
     let overlay: HTMLElement;
@@ -556,6 +562,167 @@
         resetTerminalWheelMotion();
     }
 
+    function decodeShellToken(token: string): string {
+        let value = "";
+        let escaped = false;
+
+        for (const character of token) {
+            if (escaped) {
+                value += character;
+                escaped = false;
+            } else if (character === "\\") {
+                escaped = true;
+            } else if (character === '"') {
+                continue;
+            } else {
+                value += character;
+            }
+        }
+
+        if (escaped) value += "\\";
+        return value;
+    }
+
+    function getCompletionContext(command: string, cursor: number) {
+        const tokens: Array<{ start: number; end: number; value: string }> = [];
+        let tokenStart = -1;
+        let quoted = false;
+        let escaped = false;
+
+        for (let index = 0; index <= command.length; index++) {
+            const character = command[index];
+            if (index === command.length || (character === " " && !quoted && !escaped)) {
+                if (tokenStart !== -1) {
+                    tokens.push({
+                        start: tokenStart,
+                        end: index,
+                        value: decodeShellToken(command.slice(tokenStart, index))
+                    });
+                }
+                tokenStart = -1;
+                escaped = false;
+                continue;
+            }
+
+            if (tokenStart === -1) tokenStart = index;
+            if (escaped) {
+                escaped = false;
+            } else if (character === "\\") {
+                escaped = true;
+            } else if (character === '"') {
+                quoted = !quoted;
+            }
+        }
+
+        const boundedCursor = Math.max(0, Math.min(command.length, cursor));
+        let tokenIndex = tokens.findIndex((token) => boundedCursor >= token.start && boundedCursor <= token.end);
+        if (tokenIndex === -1) {
+            tokenIndex = tokens.filter((token) => token.end < boundedCursor).length;
+        }
+
+        const token = tokens[tokenIndex];
+        const start = token?.start ?? boundedCursor;
+        const end = token?.end ?? boundedCursor;
+        let quoteOpen = false;
+        let escapeOpen = false;
+        for (let index = start; index < boundedCursor; index++) {
+            const character = command[index];
+            if (escapeOpen) {
+                escapeOpen = false;
+            } else if (character === "\\") {
+                escapeOpen = true;
+            } else if (character === '"') {
+                quoteOpen = !quoteOpen;
+            }
+        }
+
+        return {
+            tokenStart: start,
+            tokenEnd: end,
+            tokenIndex,
+            rawPrefix: command.slice(start, boundedCursor),
+            quoteOpen,
+            completedTokens: tokens.slice(0, tokenIndex).map((completed) => completed.value)
+        };
+    }
+
+    function encodeShellCompletion(value: string, quoted: boolean, keepQuoteOpen: boolean): string {
+        if (quoted || /\s/.test(value)) {
+            const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+            return `"${escaped}${keepQuoteOpen ? "" : '"'}`;
+        }
+        return value.replace(/[\\ "]/g, "\\$&");
+    }
+
+    function wrapCompletionLabels(labels: string[], columns: number): string[] {
+        const rows: string[] = [];
+        let row = "";
+
+        for (const label of labels) {
+            const next = row ? `${row}  ${label}` : label;
+            if (row && next.length > columns) {
+                rows.push(row);
+                row = label;
+            } else {
+                row = next;
+            }
+        }
+
+        if (row) rows.push(row);
+        return rows;
+    }
+
+    function completeTerminalToken() {
+        const commandCursor = cursorX - promptLine.length;
+        const context = getCompletionContext(commandLine, commandCursor);
+        const prefix = decodeShellToken(context.rawPrefix);
+        let candidates: CompletionCandidate[];
+
+        if (context.tokenIndex === 0 && !prefix.includes("/")) {
+            candidates = getCommandCompletions(prefix);
+        } else {
+            candidates = getPathCompletions(prefix);
+            if (context.tokenIndex === 0) {
+                candidates = candidates.filter((candidate) => candidate.isDirectory || candidate.executable);
+            } else if (context.completedTokens[0] === "cd") {
+                candidates = candidates.filter((candidate) => candidate.isDirectory);
+            }
+        }
+
+        if (candidates.length === 0) return;
+
+        const commonPrefix = candidates.reduce((common, candidate) => {
+            while (!candidate.value.startsWith(common)) common = common.slice(0, -1);
+            return common;
+        }, candidates[0].value);
+
+        if (candidates.length > 1 && commonPrefix === prefix) {
+            const currentLine = promptLine + commandLine;
+            terminalData[terminalData.length - 1] = currentLine;
+            terminalData.push(...wrapCompletionLabels(candidates.map((candidate) => candidate.label), terminalColumns));
+            terminalData.push(currentLine);
+            cursorX = promptLine.length + commandCursor;
+            holdCursorSolid();
+            showTerminalTail();
+            return;
+        }
+
+        const singleCandidate = candidates.length === 1 ? candidates[0] : null;
+        const completion = singleCandidate?.value ?? commonPrefix;
+        const suffix = singleCandidate && !singleCandidate.isDirectory && context.tokenEnd === commandLine.length ? " " : "";
+        const keepQuoteOpen = !singleCandidate && context.quoteOpen && commandCursor === context.tokenEnd;
+        const replacement = encodeShellCompletion(
+            completion,
+            context.rawPrefix.includes('"') || /\s/.test(completion),
+            keepQuoteOpen
+        ) + suffix;
+        commandLine = commandLine.slice(0, context.tokenStart) + replacement + commandLine.slice(context.tokenEnd);
+        cursorX = promptLine.length + context.tokenStart + replacement.length;
+        terminalData[terminalData.length - 1] = promptLine + commandLine;
+        holdCursorSolid();
+        showTerminalTail();
+    }
+
     function moveCursorByWord(direction: -1 | 1) {
         let position = cursorX - promptLine.length;
 
@@ -609,6 +776,8 @@
             activeOverlayTab = tabs[(currentIndex + direction + tabs.length) % tabs.length];
         } else if (overlayOverflow && activeOverlayTab !== "terminal") {
             return;
+        } else if (regular && !event.shiftKey && event.key === "Tab") {
+            completeTerminalToken();
         } else if (regular && event.key.length == 1) {
             holdCursorSolid();
             commandLine = commandLine.substring(0, cursorX - promptLine.length) + event.key + commandLine.substring(cursorX - promptLine.length);

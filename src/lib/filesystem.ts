@@ -76,6 +76,8 @@ export function loadStaticWebFiles() {
 					directory = child;
 				}
 
+				directory.files = directory.files.filter((file) => file.name != parts[parts.length - 1]);
+
 				directory.files.push({
 					...dummyFile,
 					name: parts[parts.length - 1],
@@ -169,4 +171,69 @@ export function changeDirectory(directory: string): string | null {
 	currentWorkingDirectory = queryResult.directory;
 
 	return null;
+}
+
+export type CompletionCandidate = {
+	value: string;
+	label: string;
+	isDirectory: boolean;
+	executable: boolean;
+};
+
+export function getPathCompletions(prefix: string, wd = currentWorkingDirectory): CompletionCandidate[] {
+	if (prefix.startsWith("~") && !prefix.includes("/")) {
+		return "~/".startsWith(prefix)
+			? [{ value: "~/", label: "~/", isDirectory: true, executable: false }]
+			: [];
+	}
+
+	const slashIndex = prefix.lastIndexOf("/");
+	const directoryPrefix = slashIndex >= 0 ? prefix.slice(0, slashIndex + 1) : "";
+	const namePrefix = slashIndex >= 0 ? prefix.slice(slashIndex + 1) : prefix;
+	const directoryPath = directoryPrefix || wd;
+	const query = find(directoryPath, wd, FIND_DIR);
+	if (query.type !== FIND_DIR || !query.result) return [];
+
+	const directory = query.result as Directory;
+	const entries: CompletionCandidate[] = [
+		...directory.children.map((child) => ({
+			value: `${directoryPrefix}${child.name}/`,
+			label: `${child.name}/`,
+			isDirectory: true,
+			executable: false
+		})),
+		...directory.files.map((file) => ({
+			value: `${directoryPrefix}${file.name}`,
+			label: file.name,
+			isDirectory: false,
+			executable: file.exec !== null
+		}))
+	];
+
+	return entries
+		.filter((entry) => entry.label.startsWith(namePrefix))
+		.sort((a, b) => a.label.localeCompare(b.label));
+}
+
+export function getCommandCompletions(prefix: string, wd = currentWorkingDirectory): CompletionCandidate[] {
+	const directories = [find("/bin", wd, FIND_DIR), find(wd, wd, FIND_DIR)];
+	const commands = new Map<string, CompletionCandidate>();
+
+	for (const query of directories) {
+		if (query.type !== FIND_DIR || !query.result) continue;
+		for (const file of (query.result as Directory).files) {
+			if (file.exec !== null) {
+				commands.set(file.name, {
+					value: file.name,
+					label: file.name,
+					isDirectory: false,
+					executable: true
+				});
+			}
+		}
+	}
+
+	return [...commands.values()]
+		.filter((command) => command.label.startsWith(prefix))
+		.sort((a, b) => a.label.localeCompare(b.label));
 }
