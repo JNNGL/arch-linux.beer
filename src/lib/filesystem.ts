@@ -13,6 +13,7 @@ import { unameCommandFile } from '#lib/commands/uname.ts';
 import { whoamiCommandFile } from '#lib/commands/whoami.ts';
 import staticFiles from '#lib/static_web.json'
 import { systemDirectories } from '#lib/system_files.ts';
+import { setTargetG } from '#lib/background.svelte.ts';
 
 export const fsRoot: Directory = {
 	name: '',
@@ -48,7 +49,10 @@ export const fsRoot: Directory = {
 					...dummyFile,
 					name: 'exit',
 					mode: '-rwxr-xr-x',
-					exec: () => 0
+					exec: () => {
+						setTargetG(0.0);
+						return 0;
+					}
 				},
 				helloCommandFile,
 				lsCommandFile,

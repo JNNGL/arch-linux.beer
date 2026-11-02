@@ -14,6 +14,13 @@
         loadStaticWebFiles,
         type CompletionCandidate
     } from "#lib/filesystem.ts";
+    import {
+        colorLevels, colorPalette,
+        frame, generatePalette,
+        gTargetLevel, setErrorBackground,
+        tickBackground,
+        time
+    } from "#lib/background.svelte.ts";
 
     let canvas: HTMLCanvasElement;
     let overlay: HTMLElement;
@@ -35,23 +42,14 @@
     const fontSize = 12.8;
     const lineHeight = fontSize * 1.4;
     const maxCells = 12000;
-    const colorLevels = 128;
 
     let gridStyle = $state("visibility: hidden;");
     let backgroundColor = $state("black");
 
-    let frame = 0;
-    let time = 0;
-    let deltaTime = 0.0015;
-    let powR = 2.0, powG = 1.0, powB = 0.5;
-    let targetPowR = 2.0, targetPowG = 1.0, targetPowB = 0.5;
-
     const chars: string = "@B%8&WM#*oahkbdpqwmzcvunxrjft/|()1{}[]?-_+~<>i!;:,^`'. ";
 
-    let colorPalette: Array<string> = [];
-
     function getPromptLine(): string {
-        return "root@localhost:" + getDisplayCWD() + "# ";
+        return (gTargetLevel.value <= 0.5 ? "root@localhost:" : "goyda@localhost:") + getDisplayCWD() + "# ";
     }
 
     let promptLine = getPromptLine();
@@ -130,16 +128,6 @@
         terminalColumns = columns;
         const maxFirstRow = Math.max(0, buildTerminalDisplayLines(columns).length - terminalRows);
         terminalFirstRow = terminalFollowsOutput ? maxFirstRow : Math.min(terminalFirstRow, maxFirstRow);
-    }
-
-    function generatePalette() {
-        colorPalette = Array.from({ length: colorLevels + 1 }, (_, index) => {
-            const shade = index / colorLevels;
-            const r = Math.pow(shade, powR) * 0.33;
-            const g = Math.pow(shade, powG) * 0.33;
-            const b = Math.pow(shade, powB) * 0.33;
-            return `rgb(${r * 100}% ${g * 100}% ${b * 100}%)`;
-        })
     }
 
     function backgroundOpacity(time: number): number {
@@ -224,13 +212,6 @@
             let index = (1.0 - x) * (chars.length - 1);
             return chars[Math.round(index)];
         }
-    }
-
-    function setErrorBackground() {
-        deltaTime = 0.04;
-        targetPowR = 0.5;
-        targetPowG = 2.0;
-        targetPowB = 2.5;
     }
 
     function renderGrid() {
@@ -436,23 +417,7 @@
 
         const intervalId = setInterval(() => {
             if (!document.hidden) {
-                frame++;
-                time += deltaTime;
-                generatePalette();
-
-                const lerp = (a: number, b: number, t: number): number => {
-                    return a + t * (b - a);
-                };
-
-                deltaTime = lerp(deltaTime, 0.0015, 0.1);
-                powR = lerp(powR, targetPowR, 0.3);
-                powG = lerp(powG, targetPowG, 0.3);
-                powB = lerp(powB, targetPowB, 0.3);
-
-                targetPowR = lerp(targetPowR, 2.0, 0.006);
-                targetPowG = lerp(targetPowG, 1.0, 0.006);
-                targetPowB = lerp(targetPowB, 0.5, 0.006);
-
+                tickBackground();
                 scheduleRender();
             }
         }, 50);
@@ -890,47 +855,92 @@
                     inert={overlayOverflow && activeOverlayTab !== "zfetch"}
                 >
                     <div style="row-gap: var(--grid-cell-height); column-gap: var(--grid-cell-width);" class="flex flex-row flex-wrap">
-                        <div style="--reveal-delay:40" class="text-blue-300">
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-`</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.o+`</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`ooo/</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`+oooo:</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`+oooooo:</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-+oooooo+:</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/:-:++oooo+:</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/++++/+++++++:</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/++++++++++++++:</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/+++ooooooooooooo/`</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;./ooosssso++osssssso+`</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.oossssso-````/ossssss+`</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-osssssso.&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:ssssssso.</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:osssssss/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;osssso+++.</p>
-                            <p>&nbsp;&nbsp;&nbsp;&nbsp;/ossssssss/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ssssooo/-</p>
-                            <p>&nbsp;&nbsp;`/ossssso+/:-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-:/+osssso+-</p>
-                            <p>&nbsp;`+sso+:-`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`.-/+oso:</p>
-                            <p>`++:.&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`-/+/</p>
-                            <p>.`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/</p>
-                        </div>
-                        <div>
-                            <p style="--reveal-delay:10"><span class="text-blue-300">root</span>@<span class="text-blue-300">arch-linux.beer</span></p>
-                            <p style="--reveal-delay:10">--------------------</p>
-                            <p style="--reveal-delay:11"><span class="text-blue-300">OS</span>: {operatingSystem}</p>
-                            <p style="--reveal-delay:12"><span class="text-blue-300">Host</span>: {host}</p>
-                            <p style="--reveal-delay:16"><span class="text-blue-300">Packages</span>: 23 (npm)</p>
-                            <p style="--reveal-delay:19"><span class="text-blue-300">Resolution</span>: {viewportWidth}x{viewportHeight}</p>
-                            <p style="--reveal-delay:20"><span class="text-blue-300">Font</span>: JetBrains Mono</p>
-                            <p></p>
-                            <p style="--reveal-delay:22" class="text-blue-300">Links</p>
-                            <p style="--reveal-delay:22">-----</p>
-                            <p style="--reveal-delay:23"><span class="text-blue-300">GitHub</span>: https://github.com/JNNGL</p>
-                            <p style="--reveal-delay:24"><span class="text-blue-300">Telegram</span>: https://t.me/jnngles</p>
-                            <p style="--reveal-delay:25"><span class="text-blue-300">Email</span>: jnngl@arch-linux.beer</p>
-                            <p></p>
-                            <div style="--reveal-delay:30">
-                                <div class="flex flex-row"><p class="bg-neutral-600">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-red-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-emerald-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-yellow-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-blue-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-fuchsia-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-cyan-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-neutral-200">&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
-                                <div class="flex flex-row"><p class="bg-neutral-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-red-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-emerald-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-yellow-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-blue-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-fuchsia-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-cyan-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-white">&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
+                        {#if gTargetLevel.value <= 0.5}
+                            <div style="--reveal-delay:40" class="text-blue-300">
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-`</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.o+`</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`ooo/</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`+oooo:</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`+oooooo:</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-+oooooo+:</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/:-:++oooo+:</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/++++/+++++++:</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/++++++++++++++:</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/+++ooooooooooooo/`</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;./ooosssso++osssssso+`</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;.oossssso-````/ossssss+`</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-osssssso.&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:ssssssso.</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:osssssss/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;osssso+++.</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;/ossssssss/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ssssooo/-</p>
+                                <p>&nbsp;&nbsp;`/ossssso+/:-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;-:/+osssso+-</p>
+                                <p>&nbsp;`+sso+:-`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`.-/+oso:</p>
+                                <p>`++:.&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`-/+/</p>
+                                <p>.`&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;`/</p>
                             </div>
-                        </div>
+                            <div>
+                                <p style="--reveal-delay:10"><span class="text-blue-300">root</span>@<span class="text-blue-300">arch-linux.beer</span></p>
+                                <p style="--reveal-delay:10">--------------------</p>
+                                <p style="--reveal-delay:11"><span class="text-blue-300">OS</span>: {operatingSystem}</p>
+                                <p style="--reveal-delay:12"><span class="text-blue-300">Host</span>: {host}</p>
+                                <p style="--reveal-delay:16"><span class="text-blue-300">Packages</span>: 23 (npm)</p>
+                                <p style="--reveal-delay:19"><span class="text-blue-300">Resolution</span>: {viewportWidth}x{viewportHeight}</p>
+                                <p style="--reveal-delay:20"><span class="text-blue-300">Font</span>: JetBrains Mono</p>
+                                <p></p>
+                                <p style="--reveal-delay:22" class="text-blue-300">Links</p>
+                                <p style="--reveal-delay:22">-----</p>
+                                <p style="--reveal-delay:23"><span class="text-blue-300">GitHub</span>: https://github.com/JNNGL</p>
+                                <p style="--reveal-delay:24"><span class="text-blue-300">Telegram</span>: https://t.me/jnngles</p>
+                                <p style="--reveal-delay:25"><span class="text-blue-300">Email</span>: jnngl@arch-linux.beer</p>
+                                <p></p>
+                                <div style="--reveal-delay:30">
+                                    <div class="flex flex-row"><p class="bg-neutral-600">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-red-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-emerald-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-yellow-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-blue-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-fuchsia-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-cyan-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-neutral-200">&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
+                                    <div class="flex flex-row"><p class="bg-neutral-400">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-red-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-emerald-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-yellow-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-blue-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-fuchsia-300">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-cyan-200">&nbsp;&nbsp;&nbsp;&nbsp;</p><p class="bg-white">&nbsp;&nbsp;&nbsp;&nbsp;</p></div>
+                                </div>
+                            </div>
+                        {:else}
+                            <div style="--reveal-delay:40" class="text-purple-600">
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;###########&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;###################&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;##*******################&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                                <p>&nbsp;&nbsp;&nbsp;&nbsp;****+++**####################&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                                <p>&nbsp;&nbsp;&nbsp;**++=+**#######################&nbsp;&nbsp;&nbsp;</p>
+                                <p>&nbsp;&nbsp;**+==+*######&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;############&nbsp;&nbsp;</p>
+                                <p>&nbsp;**++++*****&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;###########&nbsp;</p>
+                                <p>**++++*****&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#########&nbsp;</p>
+                                <p>+++++*****&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;##########</p>
+                                <p>++++++**++&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#########</p>
+                                <p>+++++++++&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#####**###</p>
+                                <p>++++++++++&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;#####***###</p>
+                                <p>&nbsp;+++==++++&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*####****##&nbsp;</p>
+                                <p>&nbsp;+++===++++&nbsp;++++&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;*****##**++*##&nbsp;&nbsp;</p>
+                                <p>&nbsp;+++++==++++++++++**********+++**#&nbsp;&nbsp;&nbsp;</p>
+                                <p>&nbsp;&nbsp;++++++++++++++**********+++**##&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                                <p>&nbsp;&nbsp;++++++++++++++++*****++++****&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                                <p>&nbsp;&nbsp;&nbsp;++++++++++++++++++++*****&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                                <p>&nbsp;&nbsp;&nbsp;+++++&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;++++******</p>
+                            </div>
+                            <div>
+                                <p style="--reveal-delay:10"><span class="text-fuchsia-300">goyda</span>@<span class="text-fuchsia-300">arch-linux.рф</span></p>
+                                <p style="--reveal-delay:10">-------------------</p>
+                                <p style="--reveal-delay:11"><span class="text-fuchsia-300">ОС</span>: Astra Linux</p>
+                                <p style="--reveal-delay:12"><span class="text-fuchsia-300">Хост</span>: Яндекс.Браузер</p>
+                                <p style="--reveal-delay:16"><span class="text-fuchsia-300">Модули</span>: 23 (1С)</p>
+                                <p style="--reveal-delay:19"><span class="text-fuchsia-300">Разрешение</span>: {viewportWidth}x{viewportHeight}</p>
+                                <p style="--reveal-delay:20"><span class="text-fuchsia-300">Шрифт</span>: JetBrains Mono</p>
+                                <p></p>
+                                <p style="--reveal-delay:22" class="text-fuchsia-300">Ссылки</p>
+                                <p style="--reveal-delay:22">------</p>
+                                <p style="--reveal-delay:23"><span class="text-fuchsia-300">MAX</span>: https://max.ru/u/f9L...vPk</p>
+                                <p style="--reveal-delay:24"><span class="text-fuchsia-300">VK</span>: https://vk.ru/jnngles</p>
+                                <p style="--reveal-delay:25"><span class="text-fuchsia-300">Почта</span>: jnngles@yandex.ru</p>
+                                <p></p>
+                                <div style="--reveal-delay:30">
+                                    <p class="bg-white">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                                    <p class="bg-blue-500">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                                    <p class="bg-red-600">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                                </div>
+                            </div>
+                        {/if}
                     </div>
                 </div>
                 <div
@@ -945,8 +955,8 @@
                 >
                     <div style="--reveal-delay:45; padding: 0 var(--grid-cell-width);"
                  class="terminal-header flex flex-row grow justify-between bg-emerald-400 text-neutral-950">
-                <p>!/bin/sh</p>
-                <p>[running]</p>
+                <p>{gTargetLevel.value <= 0.5 ? "!/bin/sh" : "!/bin/zov"}</p>
+                <p>{gTargetLevel.value <= 0.5 ? "[running]" : "[запущен]"}</p>
             </div>
             <div style={`--reveal-delay:50; --terminal-rows:${terminalRows}`} class="terminal-layout" on:wheel|nonpassive={onTerminalWheel}>
                 <div bind:this={terminalElement} class="terminal">
