@@ -1,3 +1,17 @@
 [
-		"/var/www/test.txt"
+		"/var/www/index.html",
+		"/var/www/images/arch-linux-logo.png",
+		"/var/www/images/blue-globe.gif",
+		"/var/www/images/catscape-browser-icon.png",
+		"/var/www/images/earth-globe.gif",
+		"/var/www/images/hand-pointer.gif",
+		"/var/www/images/linux-penguin.gif",
+		"/var/www/images/laptop-computer.gif",
+		"/var/www/images/mailbox-animation.gif",
+		"/var/www/images/mailbox-icon.png",
+		"/var/www/images/netscape-navigator.gif",
+		"/var/www/images/new-download-badge.png",
+		"/var/www/images/new-label.png",
+		"/var/www/images/star-bullet.gif",
+		"/var/www/images/tropical-fish.gif"
 ]
