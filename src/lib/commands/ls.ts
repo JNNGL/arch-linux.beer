@@ -7,6 +7,7 @@ type ListingEntry = {
 	name: string;
 	directory: boolean;
 	executable: boolean;
+	mode?: string;
 };
 
 function formatEntry(entry: ListingEntry, longFormat: boolean): string {
@@ -14,7 +15,7 @@ function formatEntry(entry: ListingEntry, longFormat: boolean): string {
 		return entry.name + (entry.directory && entry.name !== '.' && entry.name !== '..' ? '/' : '');
 	}
 
-	const mode = entry.directory ? 'drwxr-xr-x' : entry.executable ? '-rwxr-xr-x' : '-rw-r--r--';
+	const mode = entry.mode ?? (entry.directory ? 'drwxr-xr-x' : entry.executable ? '-rwxr-xr-x' : '-rw-r--r--');
 	return `${mode}  ${entry.name}`;
 }
 
@@ -24,7 +25,8 @@ function getDirectoryEntries(directory: Directory, showAll: boolean): ListingEnt
 		...directory.files.map((file) => ({
 			name: file.name,
 			directory: false,
-			executable: file.exec !== null
+			executable: file.exec !== null,
+			mode: file.mode
 		}))
 	].filter((entry) => showAll || !entry.name.startsWith('.'));
 
@@ -91,7 +93,7 @@ export const lsCommandFile: VirtualFile = {
 				sections.push(multipleTargets ? `${path}:${contents ? `\n${contents}` : ''}` : contents);
 			} else {
 				const file = query.result as VirtualFile;
-				const entry = { name: file.name, directory: false, executable: file.exec !== null };
+				const entry = { name: file.name, directory: false, executable: file.exec !== null, mode: file.mode };
 				const line = formatEntry(entry, longFormat);
 				sections.push(multipleTargets ? `${path}:\n${line}` : line);
 			}

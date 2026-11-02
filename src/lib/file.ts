@@ -5,6 +5,7 @@ export type VirtualFile = {
 	in: InputPipe;
 	exec: ((args: Array<string>, output: OutputPipe) => number) | null;
 	webPath: string | null;
+	mode?: string;
 };
 
 export const dummyFile: VirtualFile = {

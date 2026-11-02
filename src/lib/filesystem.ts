@@ -12,6 +12,7 @@ import { pwdCommandFile } from '#lib/commands/pwd.ts';
 import { unameCommandFile } from '#lib/commands/uname.ts';
 import { whoamiCommandFile } from '#lib/commands/whoami.ts';
 import staticFiles from '#lib/static_web.json'
+import { systemDirectories } from '#lib/system_files.ts';
 
 export const fsRoot: Directory = {
 	name: '',
@@ -21,39 +22,44 @@ export const fsRoot: Directory = {
 			children: [],
 			files: [
 				catCommandFile,
+				{
+					...dummyFile,
+					name: 'bash',
+					mode: '-rwxr-xr-x',
+					in: () => '[Bourne Again shell executable]\n'
+				},
 				cdCommandFile,
 				clearCommandFile,
 				dateCommandFile,
 				echoCommandFile,
+				{
+					...dummyFile,
+					name: 'false',
+					mode: '-rwxr-xr-x',
+					exec: () => 1
+				},
+				{
+					...dummyFile,
+					name: 'sh',
+					mode: '-rwxr-xr-x',
+					exec: () => 0
+				},
+				{
+					...dummyFile,
+					name: 'exit',
+					mode: '-rwxr-xr-x',
+					exec: () => 0
+				},
 				helloCommandFile,
 				lsCommandFile,
 				openCommandFile,
 				pacmanCommandFile,
 				pwdCommandFile,
 				unameCommandFile,
-				whoamiCommandFile,
+				whoamiCommandFile
 			]
 		},
-		{
-			name: 'dev',
-			children: [],
-			files: []
-		},
-		{
-			name: 'lib',
-			children: [],
-			files: []
-		},
-		{
-			name: 'root',
-			children: [],
-			files: []
-		},
-		{
-			name: 'var',
-			children: [],
-			files: []
-		}
+		...systemDirectories
 	],
 	files: []
 };
@@ -230,6 +236,7 @@ export function getPathCompletions(prefix: string, wd = currentWorkingDirectory)
 
 	return entries
 		.filter((entry) => entry.label.startsWith(namePrefix))
+		.filter((entry) => namePrefix.startsWith('.') || !entry.label.startsWith('.'))
 		.sort((a, b) => a.label.localeCompare(b.label));
 }
 
@@ -253,5 +260,6 @@ export function getCommandCompletions(prefix: string, wd = currentWorkingDirecto
 
 	return [...commands.values()]
 		.filter((command) => command.label.startsWith(prefix))
+		.filter((command) => prefix.startsWith('.') || !command.label.startsWith('.'))
 		.sort((a, b) => a.label.localeCompare(b.label));
 }
